@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -144,6 +145,104 @@ class ApiIntegracaoTest {
         mockMvc.perform(post("/api/v1/reservas")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void deveCriarReservaMesmoComCanceladaNoMesmoPeriodo() throws Exception {
+        SalaEntity sala = salaRepositorio.save(SalaEntity.builder()
+                .id(UUID.randomUUID())
+                .nome("Sala Azul")
+                .capacidade(10)
+                .localizacao("Andar 1")
+                .recursos(List.of("Projetor"))
+                .ativa(true)
+                .build());
+
+        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
+                .id(UUID.randomUUID())
+                .nome("Usuario")
+                .email("usuario@sala.com")
+                .tipo(TipoUsuario.COMUM)
+                .build());
+
+        LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
+        LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
+
+        reservaRepositorio.save(ReservaEntity.builder()
+                .id(UUID.randomUUID())
+                .salaId(sala.getId())
+                .usuarioId(usuario.getId())
+                .inicio(inicio)
+                .fim(fim)
+                .status(StatusReserva.CANCELADA)
+                .criadoEm(LocalDateTime.now())
+                .atualizadoEm(LocalDateTime.now())
+                .build());
+
+        String payload = "{" +
+                "\"salaId\":\"" + sala.getId() + "\"," +
+                "\"usuarioId\":\"" + usuario.getId() + "\"," +
+                "\"inicio\":\"" + LocalDateTime.of(2026, 1, 20, 9, 30) + "\"," +
+                "\"fim\":\"" + LocalDateTime.of(2026, 1, 20, 10, 30) + "\"}";
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("CONFIRMADA"));
+    }
+
+    @Test
+    void deveAlterarReservaMantendoPeriodoSemConflitoERecusarNovaReservaConflitante() throws Exception {
+        SalaEntity sala = salaRepositorio.save(SalaEntity.builder()
+                .id(UUID.randomUUID())
+                .nome("Sala Azul")
+                .capacidade(10)
+                .localizacao("Andar 1")
+                .recursos(List.of("Projetor"))
+                .ativa(true)
+                .build());
+
+        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
+                .id(UUID.randomUUID())
+                .nome("Usuario")
+                .email("usuario@sala.com")
+                .tipo(TipoUsuario.COMUM)
+                .build());
+
+        LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
+        LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
+
+        ReservaEntity reserva = reservaRepositorio.save(ReservaEntity.builder()
+                .id(UUID.randomUUID())
+                .salaId(sala.getId())
+                .usuarioId(usuario.getId())
+                .inicio(inicio)
+                .fim(fim)
+                .status(StatusReserva.CONFIRMADA)
+                .criadoEm(LocalDateTime.now())
+                .atualizadoEm(LocalDateTime.now())
+                .build());
+
+        String payloadAlterar = "{" +
+                "\"inicio\":\"" + inicio + "\"," +
+                "\"fim\":\"" + fim + "\"}";
+
+        mockMvc.perform(patch("/api/v1/reservas/{id}/alterar", reserva.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadAlterar))
+                .andExpect(status().isOk());
+
+        String payloadConflito = "{" +
+                "\"salaId\":\"" + sala.getId() + "\"," +
+                "\"usuarioId\":\"" + usuario.getId() + "\"," +
+                "\"inicio\":\"" + LocalDateTime.of(2026, 1, 20, 9, 30) + "\"," +
+                "\"fim\":\"" + LocalDateTime.of(2026, 1, 20, 10, 30) + "\"}";
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadConflito))
                 .andExpect(status().isConflict());
     }
 
