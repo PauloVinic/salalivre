@@ -71,29 +71,12 @@ class ApiIntegracaoTest {
 
     @Test
     void deveCriarReserva() throws Exception {
-        SalaEntity sala = salaRepositorio.save(SalaEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Sala Azul")
-                .capacidade(10)
-                .localizacao("Andar 1")
-                .recursos(List.of("Projetor"))
-                .ativa(true)
-                .build());
-
-        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Usuario")
-                .email("usuario@sala.com")
-                .tipo(TipoUsuario.COMUM)
-                .build());
+        SalaEntity sala = criarSalaPadrao("Sala Azul");
+        UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
 
         LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
         LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
-        String payload = "{" +
-                "\"salaId\":\"" + sala.getId() + "\"," +
-                "\"usuarioId\":\"" + usuario.getId() + "\"," +
-                "\"inicio\":\"" + inicio + "\"," +
-                "\"fim\":\"" + fim + "\"}";
+        String payload = payloadReserva(sala.getId(), usuario.getId(), inicio, fim);
 
         mockMvc.perform(post("/api/v1/reservas")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -104,41 +87,20 @@ class ApiIntegracaoTest {
 
     @Test
     void deveRetornarConflitoAoCriarReserva() throws Exception {
-        SalaEntity sala = salaRepositorio.save(SalaEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Sala Azul")
-                .capacidade(10)
-                .localizacao("Andar 1")
-                .recursos(List.of("Projetor"))
-                .ativa(true)
-                .build());
-
-        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Usuario")
-                .email("usuario@sala.com")
-                .tipo(TipoUsuario.COMUM)
-                .build());
+        SalaEntity sala = criarSalaPadrao("Sala Azul");
+        UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
 
         LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
         LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
 
-        reservaRepositorio.save(ReservaEntity.builder()
-                .id(UUID.randomUUID())
-                .salaId(sala.getId())
-                .usuarioId(usuario.getId())
-                .inicio(inicio)
-                .fim(fim)
-                .status(StatusReserva.CONFIRMADA)
-                .criadoEm(LocalDateTime.now())
-                .atualizadoEm(LocalDateTime.now())
-                .build());
+        criarReservaPersistida(sala.getId(), usuario.getId(), inicio, fim, StatusReserva.CONFIRMADA);
 
-        String payload = "{" +
-                "\"salaId\":\"" + sala.getId() + "\"," +
-                "\"usuarioId\":\"" + usuario.getId() + "\"," +
-                "\"inicio\":\"" + LocalDateTime.of(2026, 1, 20, 9, 30) + "\"," +
-                "\"fim\":\"" + LocalDateTime.of(2026, 1, 20, 10, 30) + "\"}";
+        String payload = payloadReserva(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 30),
+                LocalDateTime.of(2026, 1, 20, 10, 30)
+        );
 
         mockMvc.perform(post("/api/v1/reservas")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -148,41 +110,20 @@ class ApiIntegracaoTest {
 
     @Test
     void deveCriarReservaMesmoComCanceladaNoMesmoPeriodo() throws Exception {
-        SalaEntity sala = salaRepositorio.save(SalaEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Sala Azul")
-                .capacidade(10)
-                .localizacao("Andar 1")
-                .recursos(List.of("Projetor"))
-                .ativa(true)
-                .build());
-
-        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Usuario")
-                .email("usuario@sala.com")
-                .tipo(TipoUsuario.COMUM)
-                .build());
+        SalaEntity sala = criarSalaPadrao("Sala Azul");
+        UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
 
         LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
         LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
 
-        reservaRepositorio.save(ReservaEntity.builder()
-                .id(UUID.randomUUID())
-                .salaId(sala.getId())
-                .usuarioId(usuario.getId())
-                .inicio(inicio)
-                .fim(fim)
-                .status(StatusReserva.CANCELADA)
-                .criadoEm(LocalDateTime.now())
-                .atualizadoEm(LocalDateTime.now())
-                .build());
+        criarReservaPersistida(sala.getId(), usuario.getId(), inicio, fim, StatusReserva.CANCELADA);
 
-        String payload = "{" +
-                "\"salaId\":\"" + sala.getId() + "\"," +
-                "\"usuarioId\":\"" + usuario.getId() + "\"," +
-                "\"inicio\":\"" + LocalDateTime.of(2026, 1, 20, 9, 30) + "\"," +
-                "\"fim\":\"" + LocalDateTime.of(2026, 1, 20, 10, 30) + "\"}";
+        String payload = payloadReserva(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 30),
+                LocalDateTime.of(2026, 1, 20, 10, 30)
+        );
 
         mockMvc.perform(post("/api/v1/reservas")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -193,50 +134,33 @@ class ApiIntegracaoTest {
 
     @Test
     void deveAlterarReservaMantendoPeriodoSemConflitoERecusarNovaReservaConflitante() throws Exception {
-        SalaEntity sala = salaRepositorio.save(SalaEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Sala Azul")
-                .capacidade(10)
-                .localizacao("Andar 1")
-                .recursos(List.of("Projetor"))
-                .ativa(true)
-                .build());
-
-        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Usuario")
-                .email("usuario@sala.com")
-                .tipo(TipoUsuario.COMUM)
-                .build());
+        SalaEntity sala = criarSalaPadrao("Sala Azul");
+        UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
 
         LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
         LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
 
-        ReservaEntity reserva = reservaRepositorio.save(ReservaEntity.builder()
-                .id(UUID.randomUUID())
-                .salaId(sala.getId())
-                .usuarioId(usuario.getId())
-                .inicio(inicio)
-                .fim(fim)
-                .status(StatusReserva.CONFIRMADA)
-                .criadoEm(LocalDateTime.now())
-                .atualizadoEm(LocalDateTime.now())
-                .build());
+        ReservaEntity reserva = criarReservaPersistida(
+                sala.getId(),
+                usuario.getId(),
+                inicio,
+                fim,
+                StatusReserva.CONFIRMADA
+        );
 
-        String payloadAlterar = "{" +
-                "\"inicio\":\"" + inicio + "\"," +
-                "\"fim\":\"" + fim + "\"}";
+        String payloadAlterar = payloadAlterar(inicio, fim);
 
         mockMvc.perform(patch("/api/v1/reservas/{id}/alterar", reserva.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payloadAlterar))
                 .andExpect(status().isOk());
 
-        String payloadConflito = "{" +
-                "\"salaId\":\"" + sala.getId() + "\"," +
-                "\"usuarioId\":\"" + usuario.getId() + "\"," +
-                "\"inicio\":\"" + LocalDateTime.of(2026, 1, 20, 9, 30) + "\"," +
-                "\"fim\":\"" + LocalDateTime.of(2026, 1, 20, 10, 30) + "\"}";
+        String payloadConflito = payloadReserva(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 30),
+                LocalDateTime.of(2026, 1, 20, 10, 30)
+        );
 
         mockMvc.perform(post("/api/v1/reservas")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -246,44 +170,14 @@ class ApiIntegracaoTest {
 
     @Test
     void deveListarSalasDisponiveis() throws Exception {
-        SalaEntity salaOcupada = salaRepositorio.save(SalaEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Sala Ocupada")
-                .capacidade(10)
-                .localizacao("Andar 1")
-                .recursos(List.of("Projetor"))
-                .ativa(true)
-                .build());
-
-        SalaEntity salaLivre = salaRepositorio.save(SalaEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Sala Livre")
-                .capacidade(6)
-                .localizacao("Andar 2")
-                .recursos(List.of("TV"))
-                .ativa(true)
-                .build());
-
-        UsuarioEntity usuario = usuarioRepositorio.save(UsuarioEntity.builder()
-                .id(UUID.randomUUID())
-                .nome("Usuario")
-                .email("usuario@sala.com")
-                .tipo(TipoUsuario.COMUM)
-                .build());
+        SalaEntity salaOcupada = criarSala("Sala Ocupada", 10, "Andar 1", List.of("Projetor"));
+        SalaEntity salaLivre = criarSala("Sala Livre", 6, "Andar 2", List.of("TV"));
+        UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
 
         LocalDateTime inicio = LocalDateTime.of(2026, 1, 20, 9, 0);
         LocalDateTime fim = LocalDateTime.of(2026, 1, 20, 10, 0);
 
-        reservaRepositorio.save(ReservaEntity.builder()
-                .id(UUID.randomUUID())
-                .salaId(salaOcupada.getId())
-                .usuarioId(usuario.getId())
-                .inicio(inicio)
-                .fim(fim)
-                .status(StatusReserva.CONFIRMADA)
-                .criadoEm(LocalDateTime.now())
-                .atualizadoEm(LocalDateTime.now())
-                .build());
+        criarReservaPersistida(salaOcupada.getId(), usuario.getId(), inicio, fim, StatusReserva.CONFIRMADA);
 
         mockMvc.perform(get("/api/v1/disponibilidade")
                         .param("inicio", "2026-01-20T09:00:00")
@@ -292,6 +186,61 @@ class ApiIntegracaoTest {
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[*].id", hasItem(salaLivre.getId().toString())))
                 .andExpect(jsonPath("$[*].id", not(hasItem(salaOcupada.getId().toString()))));
+    }
+
+    private SalaEntity criarSalaPadrao(String nome) {
+        return criarSala(nome, 10, "Andar 1", List.of("Projetor"));
+    }
+
+    private SalaEntity criarSala(String nome, int capacidade, String localizacao, List<String> recursos) {
+        return salaRepositorio.save(SalaEntity.builder()
+                .id(UUID.randomUUID())
+                .nome(nome)
+                .capacidade(capacidade)
+                .localizacao(localizacao)
+                .recursos(recursos)
+                .ativa(true)
+                .build());
+    }
+
+    private UsuarioEntity criarUsuario(String email, TipoUsuario tipo) {
+        return usuarioRepositorio.save(UsuarioEntity.builder()
+                .id(UUID.randomUUID())
+                .nome("Usuario")
+                .email(email)
+                .tipo(tipo)
+                .build());
+    }
+
+    private ReservaEntity criarReservaPersistida(UUID salaId,
+                                                 UUID usuarioId,
+                                                 LocalDateTime inicio,
+                                                 LocalDateTime fim,
+                                                 StatusReserva status) {
+        return reservaRepositorio.save(ReservaEntity.builder()
+                .id(UUID.randomUUID())
+                .salaId(salaId)
+                .usuarioId(usuarioId)
+                .inicio(inicio)
+                .fim(fim)
+                .status(status)
+                .criadoEm(LocalDateTime.now())
+                .atualizadoEm(LocalDateTime.now())
+                .build());
+    }
+
+    private String payloadReserva(UUID salaId, UUID usuarioId, LocalDateTime inicio, LocalDateTime fim) {
+        return "{" +
+                "\"salaId\":\"" + salaId + "\"," +
+                "\"usuarioId\":\"" + usuarioId + "\"," +
+                "\"inicio\":\"" + inicio + "\"," +
+                "\"fim\":\"" + fim + "\"}";
+    }
+
+    private String payloadAlterar(LocalDateTime inicio, LocalDateTime fim) {
+        return "{" +
+                "\"inicio\":\"" + inicio + "\"," +
+                "\"fim\":\"" + fim + "\"}";
     }
 
 }

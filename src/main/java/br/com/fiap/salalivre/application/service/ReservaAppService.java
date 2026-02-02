@@ -16,7 +16,6 @@ import br.com.fiap.salalivre.domain.model.StatusReserva;
 import br.com.fiap.salalivre.domain.model.Usuario;
 import br.com.fiap.salalivre.domain.valueobject.PeriodoReserva;
 import br.com.fiap.salalivre.infrastructure.persistence.entity.ReservaEntity;
-import br.com.fiap.salalivre.infrastructure.persistence.entity.SalaEntity;
 import br.com.fiap.salalivre.infrastructure.persistence.entity.UsuarioEntity;
 import br.com.fiap.salalivre.infrastructure.persistence.mapper.ReservaMapper;
 import br.com.fiap.salalivre.infrastructure.persistence.mapper.UsuarioMapper;
@@ -163,8 +162,4 @@ public class ReservaAppService {
                 .orElseThrow(() -> new EntidadeNaoEncontradaException("Usuario nao encontrado."));
     }
 
-    private SalaEntity buscarSalaEntity(UUID salaId) {
-        return salaRepositorio.findById(salaId)
-                .orElseThrow(() -> new EntidadeNaoEncontradaException("Sala nao encontrada."));
-    }
 }

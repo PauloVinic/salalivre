@@ -73,4 +73,7 @@ curl "http://localhost:8080/api/v1/disponibilidade?inicio=2026-01-26T09:00:00&fi
 mvn test
 ```
 
+Os testes usam Mockito inline. O Maven Surefire executa o Byte Buddy agent via `-javaagent`
+para evitar self-attach no JDK 21 e manter o output limpo.
+
 > Observacao: evite `mvn clean` no Windows se houver falhas com `target`. Se necessario, exclua `target` manualmente.
