@@ -17,12 +17,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import br.com.fiap.salalivre.domain.exception.ConflitoDeHorarioException;
 import br.com.fiap.salalivre.domain.exception.EntidadeNaoEncontradaException;
 import br.com.fiap.salalivre.domain.exception.PermissaoNegadaException;
+import br.com.fiap.salalivre.domain.exception.RegraDeNegocioException;
 import br.com.fiap.salalivre.domain.event.ReservaAlteradaEvent;
 import br.com.fiap.salalivre.domain.event.ReservaCanceladaEvent;
 import br.com.fiap.salalivre.domain.event.ReservaCriadaEvent;
@@ -82,6 +84,7 @@ class ReservaAppServiceTest {
 
         Reserva reserva = reservaAppService.criarReserva(USUARIO_ID, SALA_ID, periodo);
 
+        ArgumentCaptor<ReservaCriadaEvent> captor = ArgumentCaptor.forClass(ReservaCriadaEvent.class);
         assertNotNull(reserva);
         assertEquals(RESERVA_ID, reserva.getId());
         assertEquals(SALA_ID, reserva.getSalaId());
@@ -90,7 +93,13 @@ class ReservaAppServiceTest {
         assertEquals(StatusReserva.CONFIRMADA, reserva.getStatus());
         verify(reservaRepositorio).findConflitos(SALA_ID, INICIO, FIM, StatusReserva.CANCELADA);
         verify(reservaRepositorio).save(any(ReservaEntity.class));
-        verify(notificacaoService).notificarReservaCriada(any(ReservaCriadaEvent.class));
+        verify(notificacaoService).notificarReservaCriada(captor.capture());
+        ReservaCriadaEvent evento = captor.getValue();
+        assertEquals(RESERVA_ID, evento.reservaId());
+        assertEquals(SALA_ID, evento.salaId());
+        assertEquals(USUARIO_ID, evento.usuarioId());
+        assertEquals(INICIO, evento.inicio());
+        assertEquals(FIM, evento.fim());
     }
 
     @Test
@@ -155,6 +164,7 @@ class ReservaAppServiceTest {
 
         Reserva reserva = reservaAppService.alterarReserva(RESERVA_ID, periodo);
 
+        ArgumentCaptor<ReservaAlteradaEvent> captor = ArgumentCaptor.forClass(ReservaAlteradaEvent.class);
         assertNotNull(reserva);
         assertEquals(RESERVA_ID, reserva.getId());
         assertEquals(SALA_ID, reserva.getSalaId());
@@ -162,7 +172,13 @@ class ReservaAppServiceTest {
         assertEquals(periodo, reserva.getPeriodo());
         verify(reservaRepositorio).findConflitosExcluindoReserva(SALA_ID, INICIO, FIM, StatusReserva.CANCELADA, RESERVA_ID);
         verify(reservaRepositorio).save(any(ReservaEntity.class));
-        verify(notificacaoService).notificarReservaAlterada(any(ReservaAlteradaEvent.class));
+        verify(notificacaoService).notificarReservaAlterada(captor.capture());
+        ReservaAlteradaEvent evento = captor.getValue();
+        assertEquals(RESERVA_ID, evento.reservaId());
+        assertEquals(SALA_ID, evento.salaId());
+        assertEquals(USUARIO_ID, evento.usuarioId());
+        assertEquals(INICIO, evento.inicio());
+        assertEquals(FIM, evento.fim());
     }
 
     @Test
@@ -210,9 +226,16 @@ class ReservaAppServiceTest {
 
         Reserva reserva = reservaAppService.cancelarReserva(RESERVA_ID, ADMIN_ID);
 
+        ArgumentCaptor<ReservaCanceladaEvent> captor = ArgumentCaptor.forClass(ReservaCanceladaEvent.class);
         assertEquals(StatusReserva.CANCELADA, reserva.getStatus());
         verify(reservaRepositorio).save(any(ReservaEntity.class));
-        verify(notificacaoService).notificarReservaCancelada(any(ReservaCanceladaEvent.class));
+        verify(notificacaoService).notificarReservaCancelada(captor.capture());
+        ReservaCanceladaEvent evento = captor.getValue();
+        assertEquals(RESERVA_ID, evento.reservaId());
+        assertEquals(SALA_ID, evento.salaId());
+        assertEquals(USUARIO_ID, evento.usuarioId());
+        assertEquals(INICIO, evento.inicio());
+        assertEquals(FIM, evento.fim());
     }
 
     @Test
@@ -238,6 +261,75 @@ class ReservaAppServiceTest {
                 () -> reservaAppService.cancelarReserva(RESERVA_ID, USUARIO_ID));
 
         verify(usuarioRepositorio, never()).findById(any(UUID.class));
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void criarReserva_deveLancarRegraDeNegocioQuandoUsuarioNulo() {
+        PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
+
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.criarReserva(null, SALA_ID, periodo));
+
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void criarReserva_deveLancarRegraDeNegocioQuandoSalaNula() {
+        PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
+
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.criarReserva(USUARIO_ID, null, periodo));
+
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void criarReserva_deveLancarRegraDeNegocioQuandoPeriodoNulo() {
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.criarReserva(USUARIO_ID, SALA_ID, null));
+
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void cancelarReserva_deveLancarRegraDeNegocioQuandoReservaIdNulo() {
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.cancelarReserva(null, USUARIO_ID));
+
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void cancelarReserva_deveLancarRegraDeNegocioQuandoUsuarioIdNulo() {
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.cancelarReserva(RESERVA_ID, null));
+
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void alterarReserva_deveLancarRegraDeNegocioQuandoReservaIdNulo() {
+        PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
+
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.alterarReserva(null, periodo));
+
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void alterarReserva_deveLancarRegraDeNegocioQuandoPeriodoNulo() {
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.alterarReserva(RESERVA_ID, null));
+
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
     }

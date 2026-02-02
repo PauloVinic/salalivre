@@ -23,7 +23,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
-
 import br.com.fiap.salalivre.domain.model.StatusReserva;
 import br.com.fiap.salalivre.domain.model.TipoUsuario;
 import br.com.fiap.salalivre.infrastructure.persistence.entity.ReservaEntity;
@@ -38,7 +37,6 @@ import br.com.fiap.salalivre.infrastructure.persistence.repository.UsuarioJpaRep
 class ApiIntegracaoTest {
 
     private MockMvc mockMvc;
-
 
     @Autowired
     private SalaJpaRepository salaRepositorio;
