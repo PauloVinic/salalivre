@@ -1,6 +1,8 @@
 package br.com.fiap.salalivre.interfaces.api;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -191,7 +193,8 @@ class ApiIntegracaoTest {
                         .param("fim", "2026-01-20T10:00:00"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(1)))
-                .andExpect(jsonPath("$[0].id").value(salaLivre.getId().toString()));
+                .andExpect(jsonPath("$[*].id", hasItem(salaLivre.getId().toString())))
+                .andExpect(jsonPath("$[*].id", not(hasItem(salaOcupada.getId().toString()))));
     }
 
 }
