@@ -24,6 +24,10 @@ public class NotificacaoService {
         logEvento("Reserva alterada", evento);
     }
 
+    public void logEvento(Object evento) {
+        logEvento("Notificacao", evento);
+    }
+
     private void logEvento(String acao, Object evento) {
         if (evento == null) {
             LOGGER.log(Level.WARNING, "Evento de notificacao nao informado para acao: {0}", acao);

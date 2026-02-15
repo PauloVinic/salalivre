@@ -1,51 +1,114 @@
 # Event Storming — SalaLivre
 
-## Contexto
-O SalaLivre busca reduzir conflitos de agenda e aumentar a visibilidade sobre a ocupação de salas de reunião. O foco está em permitir reservas claras, com regras de disponibilidade, permissões e notificações automáticas.
-
-## Eventos de Domínio (Eventos Críticos)
-- **ReservaCriada**: uma reserva foi confirmada para uma sala em um período válido e sem conflito.
-- **ReservaCancelada**: uma reserva foi cancelada pelo solicitante autorizado.
-- **ReservaAlterada**: uma reserva teve seu período atualizado.
-- **StatusReservaNotificado**: evento de notificação disparado após criação/cancelamento/alteração.
+## Visão Geral
+O fluxo do SalaLivre foi modelado para cobrir reserva de salas, decisão por disponibilidade, gestão de alterações/cancelamentos e notificações automáticas. Para fins acadêmicos, a identificação do solicitante na API é simulada por headers (`X-User-Id` e `X-User-Role`) e as notificações são registradas em log.
 
 ## Comandos
-- **CadastrarSala**: administrador registra uma sala com capacidade, localização e recursos.
-- **CriarReserva**: usuário solicita uma reserva informando sala, início e fim.
-- **CancelarReserva**: usuário (ou admin) solicita cancelamento da reserva.
-- **AlterarReserva**: usuário solicita alteração de período da reserva.
-- **ListarDisponibilidade**: usuário consulta salas disponíveis para um período.
+- **CadastrarSala**
+- **CriarReserva**
+- **CancelarReserva**
+- **AlterarReserva**
+- **ListarDisponibilidade**
+- **ProcessarLembretesProximos**
 
-## Agregados e Entidades
-- **Sala** (Agregado): id, nome, capacidade, localização, recursos, ativa.
-- **Reserva** (Agregado): id, salaId, usuarioId, periodo, status, criadoEm, atualizadoEm.
-- **Usuario** (Entidade de Suporte): id, nome, email, tipo (ADMIN/COMUM).
+## Eventos
+- **ReservaSolicitada** (evento de negócio do processo, antes da decisão)
+- **ReservaAprovadaPorDisponibilidade** (implementado como `ReservaCriada`)
+- **ReservaRejeitadaPorDisponibilidade** (implementado como erro de conflito de horário)
+- **ReservaCancelada**
+- **ReservaAlterada**
+- **StatusReservaNotificada** (confirmada/cancelada/alterada)
+- **LembreteProximoHorarioNotificado**
 
-## Regras de Negócio
-- Período válido: `fim > inicio`.
-- Conflito de horário: `inicio < existente.fim` e `fim > existente.inicio` para a mesma sala.
-- Reservas CANCELADAS não entram na verificação de conflito.
-- Cancelamento permitido apenas para ADMIN ou para o próprio usuário da reserva.
-- Alteração de período muda o status para ALTERADA.
+## Agregados e Regras
+- **Sala (Agregado)**: id, nome, capacidade, localização, recursos, ativa.
+- **Reserva (Agregado)**: id, salaId, usuarioId, periodo, status, criadoEm, atualizadoEm.
+- **Usuário (Entidade de Suporte)**: id, nome, email, tipo.
+- Regras principais:
+  - `fim > inicio`.
+  - conflito: `inicio < existente.fim` e `fim > existente.inicio`.
+  - reservas canceladas não entram no conflito.
+  - usuário comum só altera/cancela a própria reserva; admin pode gerir reservas.
+  - sala inativa não pode receber nova reserva/alteração.
 
-## Fluxos de Negócio (Resumo)
-1. **Criar reserva**
-   - Recebe comando com salaId, usuarioId, inicio/fim.
-   - Valida período e existência de sala/usuário.
-   - Verifica conflitos.
-   - Cria Reserva (status CONFIRMADA) e dispara notificação.
+## Diagrama (Mermaid)
+```mermaid
+flowchart LR
+    %% Comandos
+    C1["Comando: CadastrarSala"]
+    C2["Comando: CriarReserva"]
+    C3["Comando: CancelarReserva"]
+    C4["Comando: AlterarReserva"]
+    C5["Comando: ListarDisponibilidade"]
+    C6["Comando: ProcessarLembretesProximos"]
 
-2. **Cancelar reserva**
-   - Recebe reservaId e solicitanteUsuarioId.
-   - Busca reserva e usuário.
-   - Valida permissão no domínio.
-   - Atualiza status para CANCELADA e dispara notificação.
+    %% Agregados
+    A1["Agregado Sala"]
+    A2["Agregado Reserva"]
+    A3["Entidade de Suporte Usuario"]
 
-3. **Alterar reserva**
-   - Recebe reservaId e novo período.
-   - Valida período e conflito.
-   - Atualiza período, status ALTERADA e dispara notificação.
+    %% Eventos
+    E0["Evento: ReservaSolicitada"]
+    E1["Evento: ReservaAprovadaPorDisponibilidade"]
+    E2["Evento: ReservaRejeitadaPorDisponibilidade"]
+    E3["Evento: ReservaCancelada"]
+    E4["Evento: ReservaAlterada"]
+    E5["Evento: StatusReservaNotificada"]
+    E6["Evento: LembreteProximoHorarioNotificado"]
 
-4. **Disponibilidade**
-   - Recebe período.
-   - Retorna salas ativas sem reservas conflitantes.
+    %% Leitura / Projecoes
+    R1["Leitura: SalasDisponiveisPorPeriodo"]
+    R2["Leitura: EstadoAtualReserva"]
+    R3["Canal Interno: Log de Notificacao"]
+
+    C1 --> A1
+    C2 --> E0 --> A2
+    C3 --> A2
+    C4 --> A2
+    C5 --> A1
+    C6 --> A2
+
+    A2 -- disponibilidade OK --> E1
+    A2 -- conflito de horario --> E2
+    A2 -- cancelamento --> E3
+    A2 -- alteracao --> E4
+
+    E1 --> E5
+    E3 --> E5
+    E4 --> E5
+
+    E1 --> R2
+    E3 --> R2
+    E4 --> R2
+    E2 --> R2
+
+    C5 --> R1
+    C6 --> E6 --> R3
+    E5 --> R3
+```
+
+## Mapeamento para Implementação
+- **CadastrarSala**:
+  - Endpoint: `POST /api/v1/salas`
+  - Aplicação: `SalaAppService.cadastrarSala`
+- **CriarReserva**:
+  - Endpoint: `POST /api/v1/reservas`
+  - Aplicação: `ReservaAppService.criarReserva`
+  - Evento efetivo: `ReservaCriadaEvent` (equivale à aprovação por disponibilidade)
+  - Rejeição por disponibilidade: `ConflitoDeHorarioException` (HTTP 409)
+- **CancelarReserva**:
+  - Endpoint: `PATCH /api/v1/reservas/{id}/cancelar`
+  - Aplicação: `ReservaAppService.cancelarReserva`
+  - Evento: `ReservaCanceladaEvent`
+- **AlterarReserva**:
+  - Endpoint: `PATCH /api/v1/reservas/{id}/alterar`
+  - Aplicação: `ReservaAppService.alterarReserva`
+  - Evento: `ReservaAlteradaEvent`
+- **ListarDisponibilidade**:
+  - Endpoint: `GET /api/v1/disponibilidade`
+  - Aplicação: `DisponibilidadeAppService.listarSalasDisponiveis`
+- **Notificação de status e lembrete próximo**:
+  - Serviço: `NotificacaoService` (registro em log para simulação acadêmica)
+  - Scheduler: `LembreteReservaScheduler` + evento `ReservaLembreteEvent`
+- **Decisão acadêmica de autorização**:
+  - Headers `X-User-Id` e `X-User-Role` simulam identidade/perfil na API de reservas.

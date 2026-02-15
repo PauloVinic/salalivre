@@ -10,15 +10,16 @@ import br.com.fiap.salalivre.domain.event.ReservaCanceladaEvent;
 import br.com.fiap.salalivre.domain.event.ReservaCriadaEvent;
 import br.com.fiap.salalivre.domain.exception.ConflitoDeHorarioException;
 import br.com.fiap.salalivre.domain.exception.EntidadeNaoEncontradaException;
+import br.com.fiap.salalivre.domain.exception.PermissaoNegadaException;
 import br.com.fiap.salalivre.domain.exception.RegraDeNegocioException;
 import br.com.fiap.salalivre.domain.model.Reserva;
 import br.com.fiap.salalivre.domain.model.StatusReserva;
+import br.com.fiap.salalivre.domain.model.TipoUsuario;
 import br.com.fiap.salalivre.domain.model.Usuario;
 import br.com.fiap.salalivre.domain.valueobject.PeriodoReserva;
 import br.com.fiap.salalivre.infrastructure.persistence.entity.ReservaEntity;
-import br.com.fiap.salalivre.infrastructure.persistence.entity.UsuarioEntity;
+import br.com.fiap.salalivre.infrastructure.persistence.entity.SalaEntity;
 import br.com.fiap.salalivre.infrastructure.persistence.mapper.ReservaMapper;
-import br.com.fiap.salalivre.infrastructure.persistence.mapper.UsuarioMapper;
 import br.com.fiap.salalivre.infrastructure.persistence.repository.ReservaJpaRepository;
 import br.com.fiap.salalivre.infrastructure.persistence.repository.SalaJpaRepository;
 import br.com.fiap.salalivre.infrastructure.persistence.repository.UsuarioJpaRepository;
@@ -30,7 +31,6 @@ public class ReservaAppService {
     private final ReservaJpaRepository reservaRepositorio;
     private final NotificacaoService notificacaoService;
     private final ReservaMapper reservaMapper = new ReservaMapper();
-    private final UsuarioMapper usuarioMapper = new UsuarioMapper();
 
     public ReservaAppService(SalaJpaRepository salaRepositorio,
                              UsuarioJpaRepository usuarioRepositorio,
@@ -48,6 +48,7 @@ public class ReservaAppService {
             throw new RegraDeNegocioException("Dados obrigatorios para criar reserva nao informados.");
         }
         validarSalaExistente(salaId);
+        validarSalaAtiva(salaId);
         validarUsuarioExistente(usuarioId);
         validarConflitoHorario(salaId, periodo, null);
 
@@ -66,15 +67,15 @@ public class ReservaAppService {
     }
 
     @Transactional
-    public Reserva cancelarReserva(UUID reservaId, UUID solicitanteUsuarioId) {
+    public Reserva cancelarReserva(UUID reservaId, UUID solicitanteUsuarioId, boolean solicitanteAdmin) {
         if (reservaId == null || solicitanteUsuarioId == null) {
             throw new RegraDeNegocioException("Dados obrigatorios para cancelar reserva nao informados.");
         }
         ReservaEntity reservaEntity = buscarReservaEntity(reservaId);
-        UsuarioEntity solicitanteEntity = buscarUsuarioEntity(solicitanteUsuarioId);
+        validarPermissaoCancelamento(reservaEntity, solicitanteUsuarioId, solicitanteAdmin);
 
         Reserva reserva = reservaMapper.toDomain(reservaEntity);
-        Usuario solicitante = usuarioMapper.toDomain(solicitanteEntity);
+        Usuario solicitante = criarSolicitanteAutorizado(solicitanteUsuarioId, solicitanteAdmin);
         reserva.cancelar(solicitante);
 
         reservaMapper.atualizarEntity(reserva, reservaEntity);
@@ -92,12 +93,14 @@ public class ReservaAppService {
     }
 
     @Transactional
-    public Reserva alterarReserva(UUID reservaId, PeriodoReserva novoPeriodo) {
-        if (reservaId == null || novoPeriodo == null) {
+    public Reserva alterarReserva(UUID reservaId, PeriodoReserva novoPeriodo, UUID solicitanteUsuarioId, boolean solicitanteAdmin) {
+        if (reservaId == null || novoPeriodo == null || solicitanteUsuarioId == null) {
             throw new RegraDeNegocioException("Dados obrigatorios para alterar reserva nao informados.");
         }
         ReservaEntity reservaEntity = buscarReservaEntity(reservaId);
+        validarPermissaoAlteracao(reservaEntity, solicitanteUsuarioId, solicitanteAdmin);
         validarSalaExistente(reservaEntity.getSalaId());
+        validarSalaAtiva(reservaEntity.getSalaId());
         validarConflitoHorario(reservaEntity.getSalaId(), novoPeriodo, reservaId);
 
         Reserva reserva = reservaMapper.toDomain(reservaEntity);
@@ -120,6 +123,39 @@ public class ReservaAppService {
     private void validarSalaExistente(UUID salaId) {
         if (!salaRepositorio.existsById(salaId)) {
             throw new EntidadeNaoEncontradaException("Sala nao encontrada.");
+        }
+    }
+
+    private void validarPermissaoCancelamento(ReservaEntity reservaEntity,
+                                              UUID solicitanteUsuarioId,
+                                              boolean solicitanteAdmin) {
+        if (!solicitanteAdmin && !reservaEntity.getUsuarioId().equals(solicitanteUsuarioId)) {
+            throw new PermissaoNegadaException("Permissao negada para cancelar esta reserva.");
+        }
+    }
+
+    private void validarPermissaoAlteracao(ReservaEntity reservaEntity,
+                                           UUID solicitanteUsuarioId,
+                                           boolean solicitanteAdmin) {
+        if (!solicitanteAdmin && !reservaEntity.getUsuarioId().equals(solicitanteUsuarioId)) {
+            throw new PermissaoNegadaException("Permissao negada para alterar esta reserva.");
+        }
+    }
+
+    private Usuario criarSolicitanteAutorizado(UUID solicitanteUsuarioId, boolean solicitanteAdmin) {
+        return new Usuario(
+                solicitanteUsuarioId,
+                "Solicitante",
+                "solicitante@salalivre.local",
+                solicitanteAdmin ? TipoUsuario.ADMIN : TipoUsuario.COMUM
+        );
+    }
+
+    private void validarSalaAtiva(UUID salaId) {
+        SalaEntity sala = salaRepositorio.findById(salaId)
+                .orElseThrow(() -> new EntidadeNaoEncontradaException("Sala nao encontrada."));
+        if (!sala.isAtiva()) {
+            throw new RegraDeNegocioException("Sala inativa. Nao e possivel reservar.");
         }
     }
 
@@ -155,11 +191,6 @@ public class ReservaAppService {
     private ReservaEntity buscarReservaEntity(UUID reservaId) {
         return reservaRepositorio.findById(reservaId)
                 .orElseThrow(() -> new EntidadeNaoEncontradaException("Reserva nao encontrada."));
-    }
-
-    private UsuarioEntity buscarUsuarioEntity(UUID usuarioId) {
-        return usuarioRepositorio.findById(usuarioId)
-                .orElseThrow(() -> new EntidadeNaoEncontradaException("Usuario nao encontrado."));
     }
 
 }

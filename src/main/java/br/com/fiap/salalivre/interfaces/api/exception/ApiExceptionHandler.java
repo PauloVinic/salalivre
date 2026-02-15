@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -77,6 +78,12 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleMensagemInvalida(HttpMessageNotReadableException ex,
                                                                    HttpServletRequest request) {
         return buildResponse(HttpStatus.BAD_REQUEST, "Corpo da requisicao invalido.", request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ApiErrorResponse> handleCabecalhoObrigatorioAusente(MissingRequestHeaderException ex,
+                                                                              HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Cabecalho obrigatorio ausente: " + ex.getHeaderName() + ".", request.getRequestURI(), null);
     }
 
     @ExceptionHandler(Exception.class)

@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -38,16 +39,30 @@ public class ReservaController {
     }
 
     @PatchMapping("/{id}/cancelar")
-    public ReservaResponse cancelar(@PathVariable UUID id, @Valid @RequestBody ReservaCancelarRequest request) {
-        Reserva reserva = reservaAppService.cancelarReserva(id, request.solicitanteUsuarioId());
+    public ReservaResponse cancelar(@PathVariable UUID id,
+                                    @RequestHeader("X-User-Id") UUID solicitanteUsuarioId,
+                                    @RequestHeader(value = "X-User-Role", required = false) String solicitanteRole,
+                                    @RequestHeader(value = "X-Admin", required = false, defaultValue = "false") boolean adminHeader,
+                                    @RequestBody(required = false) ReservaCancelarRequest request) {
+        boolean solicitanteAdmin = ehAdmin(solicitanteRole, adminHeader);
+        Reserva reserva = reservaAppService.cancelarReserva(id, solicitanteUsuarioId, solicitanteAdmin);
         return toResponse(reserva);
     }
 
     @PatchMapping("/{id}/alterar")
-    public ReservaResponse alterar(@PathVariable UUID id, @Valid @RequestBody ReservaAlterarRequest request) {
+    public ReservaResponse alterar(@PathVariable UUID id,
+                                   @RequestHeader("X-User-Id") UUID solicitanteUsuarioId,
+                                   @RequestHeader(value = "X-User-Role", required = false) String solicitanteRole,
+                                   @RequestHeader(value = "X-Admin", required = false, defaultValue = "false") boolean adminHeader,
+                                   @Valid @RequestBody ReservaAlterarRequest request) {
+        boolean solicitanteAdmin = ehAdmin(solicitanteRole, adminHeader);
         PeriodoReserva periodo = new PeriodoReserva(request.inicio(), request.fim());
-        Reserva reserva = reservaAppService.alterarReserva(id, periodo);
+        Reserva reserva = reservaAppService.alterarReserva(id, periodo, solicitanteUsuarioId, solicitanteAdmin);
         return toResponse(reserva);
+    }
+
+    private boolean ehAdmin(String roleHeader, boolean adminHeader) {
+        return adminHeader || "ADMIN".equalsIgnoreCase(roleHeader);
     }
 
     private ReservaResponse toResponse(Reserva reserva) {

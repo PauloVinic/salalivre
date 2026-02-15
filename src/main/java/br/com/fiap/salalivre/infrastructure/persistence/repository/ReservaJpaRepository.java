@@ -40,4 +40,8 @@ public interface ReservaJpaRepository extends JpaRepository<ReservaEntity, UUID>
                                                       @Param("reservaId") UUID reservaId);
 
     List<ReservaEntity> findBySalaId(UUID salaId);
+
+    List<ReservaEntity> findByStatusAndLembreteEnviadoFalseAndInicioBetween(StatusReserva status,
+                                                                             LocalDateTime inicio,
+                                                                             LocalDateTime fim);
 }

@@ -30,10 +30,9 @@ import br.com.fiap.salalivre.domain.event.ReservaCanceladaEvent;
 import br.com.fiap.salalivre.domain.event.ReservaCriadaEvent;
 import br.com.fiap.salalivre.domain.model.Reserva;
 import br.com.fiap.salalivre.domain.model.StatusReserva;
-import br.com.fiap.salalivre.domain.model.TipoUsuario;
 import br.com.fiap.salalivre.domain.valueobject.PeriodoReserva;
 import br.com.fiap.salalivre.infrastructure.persistence.entity.ReservaEntity;
-import br.com.fiap.salalivre.infrastructure.persistence.entity.UsuarioEntity;
+import br.com.fiap.salalivre.infrastructure.persistence.entity.SalaEntity;
 import br.com.fiap.salalivre.infrastructure.persistence.repository.ReservaJpaRepository;
 import br.com.fiap.salalivre.infrastructure.persistence.repository.SalaJpaRepository;
 import br.com.fiap.salalivre.infrastructure.persistence.repository.UsuarioJpaRepository;
@@ -74,6 +73,7 @@ class ReservaAppServiceTest {
         PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
 
         when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, true)));
         when(usuarioRepositorio.existsById(USUARIO_ID)).thenReturn(true);
 
         when(reservaRepositorio.findConflitos(SALA_ID, INICIO, FIM, StatusReserva.CANCELADA))
@@ -107,6 +107,7 @@ class ReservaAppServiceTest {
         PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
 
         when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, true)));
         when(usuarioRepositorio.existsById(USUARIO_ID)).thenReturn(true);
         when(reservaRepositorio.findConflitos(SALA_ID, INICIO, FIM, StatusReserva.CANCELADA))
                 .thenReturn(List.of(reservaEntity(UUID.randomUUID(), SALA_ID, USUARIO_ID, INICIO, FIM, StatusReserva.CONFIRMADA)));
@@ -139,9 +140,26 @@ class ReservaAppServiceTest {
         PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
 
         when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, true)));
         when(usuarioRepositorio.existsById(USUARIO_ID)).thenReturn(false);
 
         assertThrows(EntidadeNaoEncontradaException.class,
+                () -> reservaAppService.criarReserva(USUARIO_ID, SALA_ID, periodo));
+
+        verify(reservaRepositorio, never()).findConflitos(any(UUID.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), any(StatusReserva.class));
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void criarReserva_deveLancarRegraDeNegocioQuandoSalaInativa() {
+        PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
+
+        when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, false)));
+
+        assertThrows(RegraDeNegocioException.class,
                 () -> reservaAppService.criarReserva(USUARIO_ID, SALA_ID, periodo));
 
         verify(reservaRepositorio, never()).findConflitos(any(UUID.class), any(LocalDateTime.class),
@@ -157,12 +175,13 @@ class ReservaAppServiceTest {
 
         when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.of(existente));
         when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, true)));
 
         when(reservaRepositorio.findConflitosExcluindoReserva(SALA_ID, INICIO, FIM, StatusReserva.CANCELADA, RESERVA_ID))
                 .thenReturn(List.of());
         when(reservaRepositorio.save(any(ReservaEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Reserva reserva = reservaAppService.alterarReserva(RESERVA_ID, periodo);
+        Reserva reserva = reservaAppService.alterarReserva(RESERVA_ID, periodo, USUARIO_ID, false);
 
         ArgumentCaptor<ReservaAlteradaEvent> captor = ArgumentCaptor.forClass(ReservaAlteradaEvent.class);
         assertNotNull(reserva);
@@ -188,12 +207,48 @@ class ReservaAppServiceTest {
 
         when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.of(existente));
         when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, true)));
         when(reservaRepositorio.findConflitosExcluindoReserva(SALA_ID, INICIO, FIM, StatusReserva.CANCELADA, RESERVA_ID))
                 .thenReturn(List.of(reservaEntity(UUID.randomUUID(), SALA_ID, USUARIO_ID, INICIO, FIM, StatusReserva.CONFIRMADA)));
 
         assertThrows(ConflitoDeHorarioException.class,
-                () -> reservaAppService.alterarReserva(RESERVA_ID, periodo));
+                () -> reservaAppService.alterarReserva(RESERVA_ID, periodo, USUARIO_ID, false));
 
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void alterarReserva_deveLancarRegraDeNegocioQuandoSalaInativa() {
+        PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
+        ReservaEntity existente = reservaEntity(RESERVA_ID, SALA_ID, USUARIO_ID, INICIO, FIM, StatusReserva.CONFIRMADA);
+
+        when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.of(existente));
+        when(salaRepositorio.existsById(SALA_ID)).thenReturn(true);
+        when(salaRepositorio.findById(SALA_ID)).thenReturn(Optional.of(salaEntity(SALA_ID, false)));
+
+        assertThrows(RegraDeNegocioException.class,
+                () -> reservaAppService.alterarReserva(RESERVA_ID, periodo, USUARIO_ID, false));
+
+        verify(reservaRepositorio, never()).findConflitosExcluindoReserva(any(UUID.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), any(StatusReserva.class), any(UUID.class));
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verifyNoInteractions(notificacaoService);
+    }
+
+    @Test
+    void alterarReserva_deveLancarPermissaoNegadaQuandoNaoAdminEReservaDeOutroUsuario() {
+        PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
+        ReservaEntity existente = reservaEntity(RESERVA_ID, SALA_ID, USUARIO_ID, INICIO, FIM, StatusReserva.CONFIRMADA);
+
+        when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.of(existente));
+
+        assertThrows(PermissaoNegadaException.class,
+                () -> reservaAppService.alterarReserva(RESERVA_ID, periodo, OUTRO_USUARIO_ID, false));
+
+        verify(salaRepositorio, never()).existsById(any(UUID.class));
+        verify(reservaRepositorio, never()).findConflitosExcluindoReserva(any(UUID.class), any(LocalDateTime.class),
+                any(LocalDateTime.class), any(StatusReserva.class), any(UUID.class));
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
     }
@@ -207,7 +262,7 @@ class ReservaAppServiceTest {
         when(salaRepositorio.existsById(SALA_ID)).thenReturn(false);
 
         assertThrows(EntidadeNaoEncontradaException.class,
-                () -> reservaAppService.alterarReserva(RESERVA_ID, periodo));
+                () -> reservaAppService.alterarReserva(RESERVA_ID, periodo, USUARIO_ID, false));
 
         verify(reservaRepositorio, never()).findConflitosExcluindoReserva(any(UUID.class), any(LocalDateTime.class),
                 any(LocalDateTime.class), any(StatusReserva.class), any(UUID.class));
@@ -216,15 +271,13 @@ class ReservaAppServiceTest {
     }
 
     @Test
-    void cancelarReserva_deveCancelarQuandoSolicitanteAdmin() {
+    void cancelarReserva_devePermitirQuandoAdminMesmoSeReservaForDeOutroUsuario() {
         ReservaEntity existente = reservaEntity(RESERVA_ID, SALA_ID, USUARIO_ID, INICIO, FIM, StatusReserva.CONFIRMADA);
-        UsuarioEntity admin = usuario(ADMIN_ID, TipoUsuario.ADMIN);
 
         when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.of(existente));
-        when(usuarioRepositorio.findById(ADMIN_ID)).thenReturn(Optional.of(admin));
         when(reservaRepositorio.save(any(ReservaEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Reserva reserva = reservaAppService.cancelarReserva(RESERVA_ID, ADMIN_ID);
+        Reserva reserva = reservaAppService.cancelarReserva(RESERVA_ID, ADMIN_ID, true);
 
         ArgumentCaptor<ReservaCanceladaEvent> captor = ArgumentCaptor.forClass(ReservaCanceladaEvent.class);
         assertEquals(StatusReserva.CANCELADA, reserva.getStatus());
@@ -239,15 +292,13 @@ class ReservaAppServiceTest {
     }
 
     @Test
-    void cancelarReserva_deveLancarPermissaoNegadaQuandoNaoAdminENaoDono() {
+    void cancelarReserva_deveLancarPermissaoNegadaQuandoNaoAdminEReservaDeOutroUsuario() {
         ReservaEntity existente = reservaEntity(RESERVA_ID, SALA_ID, USUARIO_ID, INICIO, FIM, StatusReserva.CONFIRMADA);
-        UsuarioEntity solicitante = usuario(OUTRO_USUARIO_ID, TipoUsuario.COMUM);
 
         when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.of(existente));
-        when(usuarioRepositorio.findById(OUTRO_USUARIO_ID)).thenReturn(Optional.of(solicitante));
 
         assertThrows(PermissaoNegadaException.class,
-                () -> reservaAppService.cancelarReserva(RESERVA_ID, OUTRO_USUARIO_ID));
+                () -> reservaAppService.cancelarReserva(RESERVA_ID, OUTRO_USUARIO_ID, false));
 
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
@@ -258,9 +309,8 @@ class ReservaAppServiceTest {
         when(reservaRepositorio.findById(RESERVA_ID)).thenReturn(Optional.empty());
 
         assertThrows(EntidadeNaoEncontradaException.class,
-                () -> reservaAppService.cancelarReserva(RESERVA_ID, USUARIO_ID));
+                () -> reservaAppService.cancelarReserva(RESERVA_ID, USUARIO_ID, false));
 
-        verify(usuarioRepositorio, never()).findById(any(UUID.class));
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
     }
@@ -299,7 +349,7 @@ class ReservaAppServiceTest {
     @Test
     void cancelarReserva_deveLancarRegraDeNegocioQuandoReservaIdNulo() {
         assertThrows(RegraDeNegocioException.class,
-                () -> reservaAppService.cancelarReserva(null, USUARIO_ID));
+                () -> reservaAppService.cancelarReserva(null, USUARIO_ID, false));
 
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
@@ -308,7 +358,7 @@ class ReservaAppServiceTest {
     @Test
     void cancelarReserva_deveLancarRegraDeNegocioQuandoUsuarioIdNulo() {
         assertThrows(RegraDeNegocioException.class,
-                () -> reservaAppService.cancelarReserva(RESERVA_ID, null));
+                () -> reservaAppService.cancelarReserva(RESERVA_ID, null, false));
 
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
@@ -319,7 +369,7 @@ class ReservaAppServiceTest {
         PeriodoReserva periodo = new PeriodoReserva(INICIO, FIM);
 
         assertThrows(RegraDeNegocioException.class,
-                () -> reservaAppService.alterarReserva(null, periodo));
+                () -> reservaAppService.alterarReserva(null, periodo, USUARIO_ID, false));
 
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
@@ -328,18 +378,20 @@ class ReservaAppServiceTest {
     @Test
     void alterarReserva_deveLancarRegraDeNegocioQuandoPeriodoNulo() {
         assertThrows(RegraDeNegocioException.class,
-                () -> reservaAppService.alterarReserva(RESERVA_ID, null));
+                () -> reservaAppService.alterarReserva(RESERVA_ID, null, USUARIO_ID, false));
 
         verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
         verifyNoInteractions(notificacaoService);
     }
 
-    private static UsuarioEntity usuario(UUID usuarioId, TipoUsuario tipo) {
-        return UsuarioEntity.builder()
-                .id(usuarioId)
-                .nome("Usuario")
-                .email("usuario@sala.com")
-                .tipo(tipo)
+    private static SalaEntity salaEntity(UUID salaId, boolean ativa) {
+        return SalaEntity.builder()
+                .id(salaId)
+                .nome("Sala Azul")
+                .capacidade(10)
+                .localizacao("Andar 1")
+                .recursos(List.of("Projetor"))
+                .ativa(ativa)
                 .build();
     }
 

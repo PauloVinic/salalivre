@@ -3,6 +3,8 @@
 ## Visão Geral
 O projeto organiza o sistema em camadas inspiradas em DDD, mantendo o domínio puro e isolando preocupações de infraestrutura e interface.
 
+O diagrama de Event Storming em `docs/event-storming.md` foi usado para separar os contextos centrais em Sala, Reserva e Notificação. Os comandos de API entram pela camada de Interfaces, os casos de uso ficam na Application e os eventos de domínio representam mudanças de estado relevantes (criação, alteração, cancelamento e lembrete). Para o escopo acadêmico, a autorização é simulada por headers (`X-User-Id`/`X-User-Role`) e as notificações são publicadas em log via `NotificacaoService`, sem integração externa de email.
+
 ## Camadas
 - **Domain** (`br.com.fiap.salalivre.domain`)
   - Entidades, value objects, eventos e exceções de domínio.

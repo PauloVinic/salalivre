@@ -37,6 +37,8 @@ public class ReservaEntity {
     @Enumerated(EnumType.STRING)
     private StatusReserva status;
 
+    private boolean lembreteEnviado;
+
     private LocalDateTime criadoEm;
 
     private LocalDateTime atualizadoEm;
