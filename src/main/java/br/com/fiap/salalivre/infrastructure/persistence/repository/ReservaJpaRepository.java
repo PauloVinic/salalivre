@@ -43,7 +43,7 @@ public interface ReservaJpaRepository extends JpaRepository<ReservaEntity, UUID>
 
     List<ReservaEntity> findByUsuarioId(UUID usuarioId);
 
-    List<ReservaEntity> findByStatusAndLembreteEnviadoFalseAndInicioBetween(StatusReserva status,
-                                                                             LocalDateTime inicio,
-                                                                             LocalDateTime fim);
+    List<ReservaEntity> findByStatusInAndLembreteEnviadoFalseAndInicioBetween(List<StatusReserva> status,
+                                                                               LocalDateTime inicio,
+                                                                               LocalDateTime fim);
 }

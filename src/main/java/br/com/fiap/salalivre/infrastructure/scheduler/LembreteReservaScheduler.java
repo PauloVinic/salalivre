@@ -16,6 +16,11 @@ import br.com.fiap.salalivre.infrastructure.persistence.repository.ReservaJpaRep
 
 @Component
 public class LembreteReservaScheduler {
+    private static final List<StatusReserva> STATUS_ELEGIVEIS = List.of(
+            StatusReserva.CONFIRMADA,
+            StatusReserva.ALTERADA
+    );
+
     private final ReservaJpaRepository reservaRepositorio;
     private final NotificacaoService notificacaoService;
     private final Clock clock;
@@ -35,8 +40,8 @@ public class LembreteReservaScheduler {
         LocalDateTime janelaInicio = agora.plusMinutes(10);
         LocalDateTime janelaFim = agora.plusMinutes(15);
 
-        List<ReservaEntity> elegiveis = reservaRepositorio.findByStatusAndLembreteEnviadoFalseAndInicioBetween(
-                StatusReserva.CONFIRMADA,
+        List<ReservaEntity> elegiveis = reservaRepositorio.findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
                 janelaInicio,
                 janelaFim
         );

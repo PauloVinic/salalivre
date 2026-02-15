@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,6 +30,10 @@ import br.com.fiap.salalivre.infrastructure.persistence.repository.ReservaJpaRep
 
 @ExtendWith(MockitoExtension.class)
 class LembreteReservaSchedulerTest {
+    private static final List<StatusReserva> STATUS_ELEGIVEIS = List.of(
+            StatusReserva.CONFIRMADA,
+            StatusReserva.ALTERADA
+    );
 
     @Mock
     private ReservaJpaRepository reservaRepositorio;
@@ -46,7 +51,7 @@ class LembreteReservaSchedulerTest {
     }
 
     @Test
-    void enviarLembretesPendentes_deveMarcarEnviarENotificarQuandoReservaNaJanela() {
+    void enviarLembretesPendentes_deveMarcarEnviarENotificarQuandoReservaConfirmadaNaJanela() {
         LocalDateTime agora = LocalDateTime.now(clock);
         LocalDateTime janelaInicio = agora.plusMinutes(10);
         LocalDateTime janelaFim = agora.plusMinutes(15);
@@ -67,8 +72,8 @@ class LembreteReservaSchedulerTest {
                 .atualizadoEm(agora.minusDays(1))
                 .build();
 
-        when(reservaRepositorio.findByStatusAndLembreteEnviadoFalseAndInicioBetween(
-                StatusReserva.CONFIRMADA,
+        when(reservaRepositorio.findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
                 janelaInicio,
                 janelaFim
         )).thenReturn(List.of(reserva));
@@ -76,8 +81,8 @@ class LembreteReservaSchedulerTest {
 
         scheduler.enviarLembretesPendentes();
 
-        verify(reservaRepositorio).findByStatusAndLembreteEnviadoFalseAndInicioBetween(
-                StatusReserva.CONFIRMADA,
+        verify(reservaRepositorio).findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
                 janelaInicio,
                 janelaFim
         );
@@ -92,5 +97,101 @@ class LembreteReservaSchedulerTest {
         assertEquals(reservaId, evento.reservaId());
         assertEquals(salaId, evento.salaId());
         assertEquals(usuarioId, evento.usuarioId());
+    }
+
+    @Test
+    void enviarLembretesPendentes_deveMarcarEnviarENotificarQuandoReservaAlteradaNaJanela() {
+        LocalDateTime agora = LocalDateTime.now(clock);
+        LocalDateTime janelaInicio = agora.plusMinutes(10);
+        LocalDateTime janelaFim = agora.plusMinutes(15);
+
+        UUID reservaId = UUID.randomUUID();
+        UUID salaId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+
+        ReservaEntity reservaAlterada = ReservaEntity.builder()
+                .id(reservaId)
+                .salaId(salaId)
+                .usuarioId(usuarioId)
+                .inicio(agora.plusMinutes(13))
+                .fim(agora.plusMinutes(43))
+                .status(StatusReserva.ALTERADA)
+                .lembreteEnviado(false)
+                .criadoEm(agora.minusDays(2))
+                .atualizadoEm(agora.minusHours(1))
+                .build();
+
+        when(reservaRepositorio.findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
+                janelaInicio,
+                janelaFim
+        )).thenReturn(List.of(reservaAlterada));
+        when(reservaRepositorio.save(any(ReservaEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        scheduler.enviarLembretesPendentes();
+
+        verify(reservaRepositorio).findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
+                janelaInicio,
+                janelaFim
+        );
+
+        ArgumentCaptor<ReservaEntity> entidadeCaptor = ArgumentCaptor.forClass(ReservaEntity.class);
+        verify(reservaRepositorio).save(entidadeCaptor.capture());
+        assertTrue(entidadeCaptor.getValue().isLembreteEnviado());
+        assertEquals(StatusReserva.ALTERADA, entidadeCaptor.getValue().getStatus());
+
+        ArgumentCaptor<Object> eventoCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(notificacaoService).logEvento(eventoCaptor.capture());
+        ReservaLembreteEvent evento = assertInstanceOf(ReservaLembreteEvent.class, eventoCaptor.getValue());
+        assertEquals(reservaId, evento.reservaId());
+        assertEquals(salaId, evento.salaId());
+        assertEquals(usuarioId, evento.usuarioId());
+    }
+
+    @Test
+    void enviarLembretesPendentes_naoDeveEnviarQuandoReservaAntesDaJanela() {
+        LocalDateTime agora = LocalDateTime.now(clock);
+        LocalDateTime janelaInicio = agora.plusMinutes(10);
+        LocalDateTime janelaFim = agora.plusMinutes(15);
+
+        when(reservaRepositorio.findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
+                janelaInicio,
+                janelaFim
+        )).thenReturn(List.of());
+
+        scheduler.enviarLembretesPendentes();
+
+        verify(reservaRepositorio).findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
+                janelaInicio,
+                janelaFim
+        );
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verify(notificacaoService, never()).logEvento(any());
+    }
+
+    @Test
+    void enviarLembretesPendentes_quandoJaEnviadoNaoDeveSalvarNovamente() {
+        LocalDateTime agora = LocalDateTime.now(clock);
+        LocalDateTime janelaInicio = agora.plusMinutes(10);
+        LocalDateTime janelaFim = agora.plusMinutes(15);
+
+        when(reservaRepositorio.findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
+                janelaInicio,
+                janelaFim
+        )).thenReturn(List.of());
+
+        scheduler.enviarLembretesPendentes();
+
+        verify(reservaRepositorio).findByStatusInAndLembreteEnviadoFalseAndInicioBetween(
+                STATUS_ELEGIVEIS,
+                janelaInicio,
+                janelaFim
+        );
+        verify(reservaRepositorio, never()).save(any(ReservaEntity.class));
+        verify(notificacaoService, never()).logEvento(any());
     }
 }

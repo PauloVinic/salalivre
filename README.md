@@ -2,6 +2,8 @@
 
 Sistema para reserva de salas de reuniao com foco em disponibilidade, conflitos de agenda e gestao de reservas.
 
+Repositorio do projeto: https://github.com/PauloVinic/salalivre
+
 ## Stack
 - Spring Boot 4.0.2
 - Java 21
@@ -30,16 +32,20 @@ A aplicacao sobe em `http://localhost:8080`.
 Base: `/api/v1`
 
 ### Salas
-- POST `/salas`
+- POST `/salas` (ADMIN-only, exige `X-User-Id` e perfil admin)
 - GET `/salas`
 - GET `/salas/{id}`
-- PATCH `/salas/{id}/ativar`
-- PATCH `/salas/{id}/desativar`
+- PATCH `/salas/{id}/ativar` (ADMIN-only, exige `X-User-Id` e perfil admin)
+- PATCH `/salas/{id}/desativar` (ADMIN-only, exige `X-User-Id` e perfil admin)
 
 ### Reservas
 - POST `/reservas`
-- PATCH `/reservas/{id}/cancelar`
-- PATCH `/reservas/{id}/alterar`
+- GET `/reservas` (ADMIN-only)
+- GET `/reservas/{id}` (ADMIN-only)
+- GET `/reservas/sala/{salaId}` (ADMIN-only)
+- GET `/reservas/usuario/{usuarioId}` (ADMIN-only)
+- PATCH `/reservas/{id}/cancelar` (exige `X-User-Id`)
+- PATCH `/reservas/{id}/alterar` (exige `X-User-Id`)
 
 ### Disponibilidade
 - GET `/disponibilidade?inicio=...&fim=...`
@@ -48,6 +54,8 @@ Base: `/api/v1`
 Cadastrar sala:
 ```bash
 curl -X POST http://localhost:8080/api/v1/salas \
+  -H "X-User-Id: USUARIO_ID" \
+  -H "X-User-Role: ADMIN" \
   -H "Content-Type: application/json" \
   -d '{"nome":"Sala Azul","capacidade":10,"localizacao":"Andar 1","recursos":["Projetor"]}'
 ```
@@ -63,6 +71,24 @@ Consultar disponibilidade:
 ```bash
 curl "http://localhost:8080/api/v1/disponibilidade?inicio=2026-01-26T09:00:00&fim=2026-01-26T10:00:00"
 ```
+
+Cancelar reserva (headers obrigatorios):
+```bash
+curl -X PATCH http://localhost:8080/api/v1/reservas/RESERVA_ID/cancelar \
+  -H "X-User-Id: USUARIO_ID" \
+  -H "X-User-Role: ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+## Autorizacao simulada (escopo academico)
+- O projeto nao usa Spring Security nesta fase.
+- A identidade/perfil do solicitante e simulada por headers:
+  - `X-User-Id` (obrigatorio nas operacoes protegidas)
+  - `X-User-Role` (opcional; `ADMIN` autoriza operacoes administrativas)
+  - `X-Admin` (compatibilidade com testes/clients legados)
+- Operacoes ADMIN-only aceitam `X-User-Role: ADMIN` (preferencial) ou `X-Admin: true`.
+- `PATCH /reservas/{id}/cancelar` e `PATCH /reservas/{id}/alterar` exigem `X-User-Id`.
 
 ## Documentacao
 - `docs/event-storming.md`

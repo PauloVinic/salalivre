@@ -107,6 +107,25 @@ class ApiIntegracaoTest {
     }
 
     @Test
+    void deveRetornar400ParaValidacaoDeRequestInvalido() throws Exception {
+        String payloadInvalido = "{" +
+                "\"salaId\":null," +
+                "\"usuarioId\":null," +
+                "\"inicio\":null," +
+                "\"fim\":null}";
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadInvalido))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Campos invalidos."))
+                .andExpect(jsonPath("$.details.salaId").exists())
+                .andExpect(jsonPath("$.details.usuarioId").exists())
+                .andExpect(jsonPath("$.details.inicio").exists())
+                .andExpect(jsonPath("$.details.fim").exists());
+    }
+
+    @Test
     void deveRecusarCriacaoReservaQuandoSalaInativa() throws Exception {
         SalaEntity sala = criarSalaPadrao("Sala Inativa");
         UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
@@ -268,6 +287,15 @@ class ApiIntegracaoTest {
     }
 
     @Test
+    void deveRetornar404AoObterReservaInexistente() throws Exception {
+        mockMvc.perform(get("/api/v1/reservas/{id}", UUID.randomUUID())
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_ADMIN))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Reserva nao encontrada."));
+    }
+
+    @Test
     void deveRetornarConflitoAoCriarReserva() throws Exception {
         SalaEntity sala = criarSalaPadrao("Sala Azul");
         UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
@@ -288,6 +316,29 @@ class ApiIntegracaoTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payload))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void deveRetornar409AoCriarReservaComConflito() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Conflito");
+        UsuarioEntity usuario = criarUsuario("usuario.conflito@sala.com", TipoUsuario.COMUM);
+        String payload = payloadReserva(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 0),
+                LocalDateTime.of(2026, 1, 20, 10, 0)
+        );
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Conflito de horario para a sala."));
     }
 
     @Test
@@ -349,6 +400,79 @@ class ApiIntegracaoTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payloadConflito))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void deveNegarAlterarReservaSemHeaderXUserId() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Sem Header");
+        UsuarioEntity usuario = criarUsuario("usuario.header@sala.com", TipoUsuario.COMUM);
+        ReservaEntity reserva = criarReservaPersistida(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 0),
+                LocalDateTime.of(2026, 1, 20, 10, 0),
+                StatusReserva.CONFIRMADA
+        );
+
+        mockMvc.perform(patch("/api/v1/reservas/{id}/alterar", reserva.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadAlterar(
+                                LocalDateTime.of(2026, 1, 20, 11, 0),
+                                LocalDateTime.of(2026, 1, 20, 12, 0)
+                        )))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Cabecalho obrigatorio ausente: X-User-Id."));
+    }
+
+    @Test
+    void deveRetornar403AoAlterarReservaComUsuarioComum() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Permissao");
+        UsuarioEntity dono = criarUsuario("dono.alterar@sala.com", TipoUsuario.COMUM);
+        UsuarioEntity comum = criarUsuario("comum.alterar@sala.com", TipoUsuario.COMUM);
+        ReservaEntity reserva = criarReservaPersistida(
+                sala.getId(),
+                dono.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 0),
+                LocalDateTime.of(2026, 1, 20, 10, 0),
+                StatusReserva.CONFIRMADA
+        );
+
+        mockMvc.perform(patch("/api/v1/reservas/{id}/alterar", reserva.getId())
+                        .header("X-User-Id", comum.getId().toString())
+                        .header("X-User-Role", ROLE_COMUM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadAlterar(
+                                LocalDateTime.of(2026, 1, 20, 11, 0),
+                                LocalDateTime.of(2026, 1, 20, 12, 0)
+                        )))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Permissao negada para alterar esta reserva."));
+    }
+
+    @Test
+    void devePermitirAdminAlterarReserva() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Admin");
+        UsuarioEntity dono = criarUsuario("dono.admin@sala.com", TipoUsuario.COMUM);
+        UsuarioEntity admin = criarUsuario("admin.alterar@sala.com", TipoUsuario.ADMIN);
+        ReservaEntity reserva = criarReservaPersistida(
+                sala.getId(),
+                dono.getId(),
+                LocalDateTime.of(2026, 1, 20, 9, 0),
+                LocalDateTime.of(2026, 1, 20, 10, 0),
+                StatusReserva.CONFIRMADA
+        );
+
+        mockMvc.perform(patch("/api/v1/reservas/{id}/alterar", reserva.getId())
+                        .header("X-User-Id", admin.getId().toString())
+                        .header("X-User-Role", ROLE_ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadAlterar(
+                                LocalDateTime.of(2026, 1, 20, 11, 0),
+                                LocalDateTime.of(2026, 1, 20, 12, 0)
+                        )))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ALTERADA"))
+                .andExpect(jsonPath("$.id").value(reserva.getId().toString()));
     }
 
     @Test
