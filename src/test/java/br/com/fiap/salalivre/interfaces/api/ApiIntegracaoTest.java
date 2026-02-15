@@ -35,6 +35,8 @@ import br.com.fiap.salalivre.infrastructure.persistence.repository.UsuarioJpaRep
 @SpringBootTest
 @ActiveProfiles("test")
 class ApiIntegracaoTest {
+    private static final String ROLE_ADMIN = "ADMIN";
+    private static final String ROLE_COMUM = "COMUM";
 
     private MockMvc mockMvc;
 
@@ -59,12 +61,31 @@ class ApiIntegracaoTest {
     }
 
     @Test
-    void deveCadastrarSala() throws Exception {
-        String payload = "{\"nome\":\"Sala Laranja\",\"capacidade\":8,\"localizacao\":\"Andar 3\",\"recursos\":[\"TV\"]}";
-
+    void deveRetornar400AoCadastrarSalaSemHeaderXUserId() throws Exception {
         mockMvc.perform(post("/api/v1/salas")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload))
+                        .content(payloadSala("Sala Laranja")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deveRetornar403AoCadastrarSalaComUsuarioComum() throws Exception {
+        mockMvc.perform(post("/api/v1/salas")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_COMUM)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadSala("Sala Laranja")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Permissao negada. Apenas ADMIN pode gerenciar salas."));
+    }
+
+    @Test
+    void deveCadastrarSalaQuandoSolicitanteForAdmin() throws Exception {
+        mockMvc.perform(post("/api/v1/salas")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadSala("Sala Laranja")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists());
     }
@@ -90,7 +111,9 @@ class ApiIntegracaoTest {
         SalaEntity sala = criarSalaPadrao("Sala Inativa");
         UsuarioEntity usuario = criarUsuario("usuario@sala.com", TipoUsuario.COMUM);
 
-        mockMvc.perform(patch("/api/v1/salas/{id}/desativar", sala.getId()))
+        mockMvc.perform(patch("/api/v1/salas/{id}/desativar", sala.getId())
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_ADMIN))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ativa").value(false));
 
@@ -103,6 +126,28 @@ class ApiIntegracaoTest {
                         .content(payload))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Sala inativa. Nao e possivel reservar."));
+    }
+
+    @Test
+    void deveRetornar403AoDesativarSalaComUsuarioComum() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Restrita");
+
+        mockMvc.perform(patch("/api/v1/salas/{id}/desativar", sala.getId())
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_COMUM))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Permissao negada. Apenas ADMIN pode gerenciar salas."));
+    }
+
+    @Test
+    void deveDesativarSalaQuandoSolicitanteForAdmin() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Restrita");
+
+        mockMvc.perform(patch("/api/v1/salas/{id}/desativar", sala.getId())
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ativa").value(false));
     }
 
     @Test
@@ -164,6 +209,62 @@ class ApiIntegracaoTest {
                         .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CANCELADA"));
+    }
+
+    @Test
+    void deveNegarListagemReservasSemHeaderXUserId() throws Exception {
+        mockMvc.perform(get("/api/v1/reservas"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deveRetornar403AoListarReservasComUsuarioComum() throws Exception {
+        mockMvc.perform(get("/api/v1/reservas")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_COMUM))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Permissao negada. Apenas ADMIN pode gerenciar reservas."));
+    }
+
+    @Test
+    void deveListarReservasQuandoAdmin() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Lista");
+        UsuarioEntity usuario = criarUsuario("usuario.lista@sala.com", TipoUsuario.COMUM);
+        criarReservaPersistida(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 14, 0),
+                LocalDateTime.of(2026, 1, 20, 15, 0),
+                StatusReserva.CONFIRMADA
+        );
+
+        mockMvc.perform(get("/api/v1/reservas")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)));
+    }
+
+    @Test
+    void deveObterReservaPorIdQuandoAdmin() throws Exception {
+        SalaEntity sala = criarSalaPadrao("Sala Detalhe");
+        UsuarioEntity usuario = criarUsuario("usuario.detalhe@sala.com", TipoUsuario.COMUM);
+        ReservaEntity reserva = criarReservaPersistida(
+                sala.getId(),
+                usuario.getId(),
+                LocalDateTime.of(2026, 1, 20, 16, 0),
+                LocalDateTime.of(2026, 1, 20, 17, 0),
+                StatusReserva.CONFIRMADA
+        );
+
+        mockMvc.perform(get("/api/v1/reservas/{id}", reserva.getId())
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", ROLE_ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(reserva.getId().toString()))
+                .andExpect(jsonPath("$.salaId").value(sala.getId().toString()))
+                .andExpect(jsonPath("$.usuarioId").value(usuario.getId().toString()))
+                .andExpect(jsonPath("$.status").value("CONFIRMADA"));
     }
 
     @Test
@@ -317,6 +418,14 @@ class ApiIntegracaoTest {
                 "\"usuarioId\":\"" + usuarioId + "\"," +
                 "\"inicio\":\"" + inicio + "\"," +
                 "\"fim\":\"" + fim + "\"}";
+    }
+
+    private String payloadSala(String nome) {
+        return "{" +
+                "\"nome\":\"" + nome + "\"," +
+                "\"capacidade\":8," +
+                "\"localizacao\":\"Andar 3\"," +
+                "\"recursos\":[\"TV\"]}";
     }
 
     private String payloadAlterar(LocalDateTime inicio, LocalDateTime fim) {

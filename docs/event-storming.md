@@ -31,7 +31,7 @@ O fluxo do SalaLivre foi modelado para cobrir reserva de salas, decisão por dis
   - usuário comum só altera/cancela a própria reserva; admin pode gerir reservas.
   - sala inativa não pode receber nova reserva/alteração.
 
-## Diagrama (Mermaid)
+## Diagrama de Event Storming
 ```mermaid
 flowchart LR
     %% Comandos

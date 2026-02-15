@@ -1,5 +1,6 @@
 package br.com.fiap.salalivre.application.service;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -118,6 +119,32 @@ public class ReservaAppService {
         );
         notificacaoService.notificarReservaAlterada(evento);
         return reservaMapper.toDomain(salva);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Reserva> listarReservas() {
+        return reservaRepositorio.findAll().stream()
+                .map(reservaMapper::toDomain)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Reserva obterReserva(UUID reservaId) {
+        return reservaMapper.toDomain(buscarReservaEntity(reservaId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<Reserva> listarReservasPorSala(UUID salaId) {
+        return reservaRepositorio.findBySalaId(salaId).stream()
+                .map(reservaMapper::toDomain)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<Reserva> listarReservasPorUsuario(UUID usuarioId) {
+        return reservaRepositorio.findByUsuarioId(usuarioId).stream()
+                .map(reservaMapper::toDomain)
+                .toList();
     }
 
     private void validarSalaExistente(UUID salaId) {
